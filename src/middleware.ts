@@ -1,31 +1,58 @@
 // src/middleware.ts
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import {
+  clerkClient,
+  clerkMiddleware,
+  createRouteMatcher,
+} from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server"; // Importe explicitement NextRequest pour le typage
 
 // Définis les chemins qui doivent être publiquement accessibles SANS authentification.
-// Le webhook de Clerk DOIT être listé ici.
 const isPublicRoute = createRouteMatcher([
-  "/api/webhooks/clerk", // La route du webhook doit être publique
-  "/sign-in(.*)", // Les pages de connexion de Clerk sont publiques par défaut
-  "/sign-up(.*)", // Les pages d'inscription de Clerk sont publiques par défaut
-  "/sso-callback(.*)", // Callback SSO de Clerk
-  "/(.*)", // Si ta page d'accueil est publique
-  // Ajoute ici d'autres chemins que tu souhaites rendre explicitement publics.
-  // Par exemple, si tu as une API pour lister des produits qui n'a pas besoin d'authentification :
-  // '/api/products(.*)',
+  "/api/webhooks/clerk",
+  "/sign-in(.*)",
+  "/sign-up(.*)",
+  "/sso-callback(.*)",
+  "/", // La page d'accueil ('/') DOIT être publique pour notre logique de redirection
 ]);
 
-export default clerkMiddleware(async (auth, req) => {
-  // Si la route actuelle N'EST PAS une route publique,
-  // alors nous appelons auth.protect() pour exiger l'authentification.
-  if (!isPublicRoute(req)) {
-    await auth.protect();
+export default clerkMiddleware(async (authResolver, req: NextRequest) => {
+  // 'authResolver' est la fonction qui retourne l'objet d'authentification
+  const url = req.nextUrl;
+
+  // IMPORTANT : Appelle authResolver() pour obtenir l'objet d'authentification et utilise 'await'.
+  // Cet objet contient userId, user, et d'autres propriétés.
+  const { userId } = await authResolver();
+
+  // --- Logique de redirection pour les administrateurs ---
+  if (userId) {
+    // Vérifie si un utilisateur est authentifié et si l'objet user est disponible
+    const user = await (await clerkClient()).users.getUser(userId);
+    // console.log(user);
+    // Tente d'accéder au rôle via publicMetadata de l'objet user.
+    // Utilisation d'une assertion de type pour contourner d'éventuels problèmes de typage de TypeScript.
+    const userRole = user.publicMetadata?.role;
+
+    // Si l'utilisateur a le rôle "admin" ET qu'il tente d'accéder à la page d'accueil ('/')
+    // On le redirige vers le tableau de bord.
+    if (userRole === "admin" && url.pathname === "/") {
+      return NextResponse.redirect(new URL("/dashboard/products", req.url));
+    }
   }
-  // Si c'est une route publique, nous ne faisons rien, et elle reste accessible.
+
+  // --- Logique de protection des routes (existante) ---
+  // Si la route actuelle N'EST PAS une route publique,
+  // alors nous appelons protect() pour exiger l'authentification.
+  if (!isPublicRoute(req)) {
+    // Appelle authResolver() pour obtenir l'objet d'authentification, puis sa méthode protect().
+    await authResolver.protect();
+  }
+
+  // Si c'est une route publique, ou si aucune redirection admin n'a eu lieu, continuer normalement.
+  return NextResponse.next();
 });
 
-// La configuration du matcher reste la même : elle assure que le middleware
-// s'exécute pour toutes les routes de l'application (pages et API),
-// à l'exception des fichiers statiques et des chemins internes de Next.js (_next).
+// La configuration du matcher reste la même.
 export const config = {
   matcher: [
     "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",

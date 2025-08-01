@@ -1,112 +1,107 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // src/app/dashboard/products/page.tsx
-"use client"; // Cette page a besoin d'interactivité pour fetch les données et gérer les états
+"use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react"; // Ajout de useMemo
+import { DataTable } from "@/components/data-table"; // Assurez-vous que ce chemin est correct
+import { columns, Product } from "@/components/columns"; // Importez vos colonnes et le type Product
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input"; // Importer Input pour la barre de recherche
 import Link from "next/link";
-import { Button } from "@/components/ui/button"; // Assurez-vous que le chemin est correct
-import { Skeleton } from "@/components/ui/skeleton"; // Nous allons l'ajouter via shadcn
-import { toast } from "sonner"; // Pour les notifications
-import { DataTable } from "@/components/data-table"; // Importe le nouveau composant DataTable
-import { columns, Product } from "@/components/columns"; // Importe les colonnes et le type Product
+import { toast } from "sonner";
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Fonction pour récupérer les produits
-  const fetchProducts = async () => {
-    setLoading(true); // Active l'état de chargement
-    setError(null); // Réinitialise les erreurs précédentes
-    try {
-      const response = await fetch("/api/products");
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data: Product[] = await response.json();
-      setProducts(data);
-    } catch (err) {
-      console.error("Failed to fetch products:", err);
-      setError("Impossible de charger les produits.");
-      toast.error("Erreur lors du chargement des produits."); // Affiche une notification d'erreur
-    } finally {
-      setLoading(false); // Désactive l'état de chargement
-    }
-  };
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState(""); // Nouvel état pour le terme de recherche
 
   useEffect(() => {
+    async function fetchProducts() {
+      try {
+        const response = await fetch("/api/products");
+        if (!response.ok) {
+          throw new Error("Échec de la récupération des produits.");
+        }
+        const data = await response.json();
+        setProducts(data);
+      } catch (error) {
+        console.error("Erreur lors du chargement des produits:", error);
+        toast.error("Erreur lors du chargement des produits.");
+      } finally {
+        setLoading(false);
+      }
+    }
     fetchProducts();
   }, []);
 
-  // Fonction pour gérer la suppression d'un produit
-  const handleDelete = async (productId: string) => {
-    if (
-      !confirm(
-        "Êtes-vous sûr de vouloir supprimer ce produit ? Cette action est irréversible."
-      )
-    ) {
-      return; // Annule la suppression si l'utilisateur annule
+  // --- Fonction pour gérer la suppression (à passer à DataTable) ---
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Êtes-vous sûr de vouloir supprimer ce produit ?")) {
+      return;
     }
-
     try {
-      const response = await fetch(`/api/products/${productId}`, {
+      const response = await fetch(`/api/products/${id}`, {
         method: "DELETE",
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(
-          errorData.message || "Échec de la suppression du produit."
-        );
+        throw new Error(errorData.message || "Échec de la suppression du produit.");
       }
 
+      setProducts(prevProducts => prevProducts.filter(product => product._id !== id));
       toast.success("Produit supprimé avec succès !");
-      // Rafraîchit la liste des produits après la suppression réussie
-      fetchProducts();
     } catch (error: any) {
       console.error("Erreur lors de la suppression du produit:", error);
-      toast.error(
-        error.message ||
-          "Une erreur est survenue lors de la suppression du produit."
-      );
+      toast.error(error.message || "Une erreur est survenue lors de la suppression.");
     }
   };
 
+  // --- Filtrer les produits basés sur le terme de recherche ---
+  const filteredProducts = useMemo(() => {
+    if (!searchTerm) {
+      return products;
+    }
+    const lowercasedSearchTerm = searchTerm.toLowerCase();
+    return products.filter(product =>
+      product.name.toLowerCase().includes(lowercasedSearchTerm) ||
+      product.sku.toLowerCase().includes(lowercasedSearchTerm) ||
+      product.shortDescription?.toLowerCase().includes(lowercasedSearchTerm) ||
+      product.categories.some((cat: any) => cat.toLowerCase().includes(lowercasedSearchTerm)) ||
+      product.tags.some((tag: any) => tag.toLowerCase().includes(lowercasedSearchTerm))
+    );
+  }, [products, searchTerm]);
+
+
   if (loading) {
     return (
-      <div className="bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-2xl font-semibold mb-6">Liste des Produits</h2>
-        <Skeleton className="w-full h-10 mb-4" />
-        <Skeleton className="w-full h-64" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="bg-red-100 text-red-700 p-4 rounded-lg">
-        <p>{error}</p>
+      <div className="flex justify-center items-center h-screen">
+        Chargement des produits...
       </div>
     );
   }
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-semibold">Liste des Produits</h2>
-        <Link href="/dashboard/products/new" passHref>
+    <Card className="p-4">
+      <CardHeader className="flex flex-row justify-between items-center mb-4">
+        <CardTitle className="text-3xl font-bold">Produits</CardTitle>
+        <Link href="/dashboard/products/new">
           <Button>Ajouter un nouveau produit</Button>
         </Link>
-      </div>
-
-      {products.length === 0 ? (
-        <div className="text-center p-10 text-gray-500 border border-dashed rounded-lg">
-          <p>Aucun produit trouvé. Commence par en ajouter un !</p>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-4">
+          <Input
+            placeholder="Rechercher des produits par nom, SKU, catégorie..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="max-w-sm"
+          />
         </div>
-      ) : (
-        <DataTable columns={columns(handleDelete)} data={products} />
-      )}
-    </div>
+        {/* Passer la fonction handleDelete au composant DataTable */}
+        <DataTable columns={columns} data={filteredProducts} onDelete={handleDelete} />
+      </CardContent>
+    </Card>
   );
 }

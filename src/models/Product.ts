@@ -76,6 +76,8 @@ const productSchema = new mongoose.Schema({
   variants: [variantSchema],
   createdAt: { type: Date, default: Date.now() },
   updatedAt: { type: Date, default: Date.now() },
+  active: Boolean,
+  isFeatured: Boolean,
 });
 
 // Assurez-vous que les schémas imbriqués sont définis avant d'être utilisés

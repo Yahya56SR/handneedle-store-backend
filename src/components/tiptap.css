@@ -1,0 +1,99 @@
+/* src/components/tiptap.css */
+
+/* Styles de base de l'éditeur Tiptap */
+.tiptap-container .ProseMirror {
+  min-height: 200px;
+  border: 1px solid #e2e8f0; /* border-gray-200 */
+  border-top: none; /* La barre d'outils aura sa propre bordure */
+  border-radius: 0 0 0.375rem 0.375rem; /* rounded-b-md */
+  padding: 0.75rem; /* p-3 */
+  outline: none; /* Supprime le focus par défaut du navigateur */
+}
+
+/* Styles pour les paragraphes et le texte par défaut */
+.tiptap-container .ProseMirror p {
+  margin-bottom: 0.5em; /* Espacement entre paragraphes */
+}
+
+/* Styles pour les titres */
+.tiptap-container .ProseMirror h1 {
+  font-size: 2em; /* text-3xl */
+  font-weight: bold;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+.tiptap-container .ProseMirror h2 {
+  font-size: 1.5em; /* text-2xl */
+  font-weight: bold;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+/* Styles pour les éléments de liste */
+.tiptap-container .ProseMirror ul,
+.tiptap-container .ProseMirror ol {
+  padding-left: 1.5em; /* Indentation pour les listes */
+  margin-bottom: 0.5em;
+}
+
+.tiptap-container .ProseMirror li {
+  margin-bottom: 0.25em;
+}
+
+/* Styles pour les citations */
+.tiptap-container .ProseMirror blockquote {
+  border-left: 4px solid #cbd5e1; /* border-gray-300 */
+  padding-left: 1em;
+  margin-left: 0;
+  font-style: italic;
+  color: #64748b; /* text-gray-500 */
+}
+
+/* Styles pour les liens */
+.tiptap-container .ProseMirror a {
+  color: #3b82f6; /* text-blue-500 */
+  text-decoration: underline;
+}
+
+/* Styles pour les images */
+.tiptap-container .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.25rem; /* rounded-md */
+  margin: 0.5em 0;
+}
+
+/* Styles pour les boutons de la barre d'outils */
+.tiptap-toolbar button {
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.25rem; /* rounded-md */
+  border: 1px solid #cbd5e1; /* border-gray-300 */
+  background-color: #ffffff; /* bg-white */
+  cursor: pointer;
+  font-size: 0.875rem; /* text-sm */
+  transition: all 0.2s ease-in-out;
+}
+
+.tiptap-toolbar button:hover:not(.is-active) {
+  background-color: #f1f5f9; /* bg-gray-50 */
+  border-color: #a0aec0; /* border-gray-400 */
+}
+
+.tiptap-toolbar button.is-active {
+  background-color: #3b82f6; /* bg-blue-500 */
+  color: #ffffff; /* text-white */
+  border-color: #3b82f6;
+}
+
+.tiptap-toolbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Conteneur principal de l'éditeur pour les bordures et l'ombre */
+.tiptap-container {
+  border: 1px solid #e2e8f0; /* Equivalent de border-gray-200 */
+  border-radius: 0.375rem; /* Equivalent de rounded-md */
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06); /* Equivalent de shadow-sm */
+}

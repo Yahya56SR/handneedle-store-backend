@@ -6,7 +6,7 @@ import Product from "../../../models/Product";
 import mongoose from "mongoose";
 
 // --- Helper for transforming product options for variant generation ---
-function transformProductOptionsForVariantGeneration(
+export function transformProductOptionsForVariantGeneration(
   finalProductOptions: any[]
 ): { [key: string]: string[] } {
   const transformedOptions: { [key: string]: string[] } = {};
@@ -30,8 +30,8 @@ function transformProductOptionsForVariantGeneration(
   return transformedOptions;
 }
 
-// --- generateVariants function (now correctly matching schema expectation) ---
-function generateVariants(
+// --- generateVariants function (CORRIGÉE pour le champ 'options') ---
+export function generateVariants(
   productOptions: { [key: string]: string[] }, // e.g., { "Color": ["Red", "Blue"], "Size": ["S", "M"] }
   baseSku: string,
   baseStock: number
@@ -69,11 +69,15 @@ function generateVariants(
       .map((opt) => opt.value.replace(/\s+/g, "-").toUpperCase())
       .join("-");
 
-    // 'combination' is already an array of { name: string, value: string } objects,
-    // which perfectly matches the 'options: [variantOptionSchema]' in your schema.
+    // MODIFICATION ICI : Transforme le tableau 'combination' en un objet clé-valeur
+    const optionsMap: { [key: string]: string } = {};
+    combination.forEach((opt) => {
+      optionsMap[opt.name] = opt.value;
+    });
+
     return {
       sku: `${baseSku}-${skuSuffix}`,
-      options: combination,
+      options: optionsMap, // Maintenant c'est un objet (qui peut être casté en Map par Mongoose)
       priceAdjustment: 0,
       stock: baseStock,
     };
@@ -212,93 +216,6 @@ export async function POST(req: Request) {
     return NextResponse.json(product, { status: 201 });
   } catch (error: any) {
     console.error("Error creating product:", error);
-    if (error.name === "ValidationError") {
-      return NextResponse.json({ message: error.message }, { status: 400 });
-    }
-    if (error.code === 11000) {
-      return NextResponse.json(
-        {
-          message:
-            "Duplicate key error, product name or SKU might already exist.",
-        },
-        { status: 409 }
-      );
-    }
-    return NextResponse.json(
-      { message: "An unexpected error occurred." },
-      { status: 500 }
-    );
-  }
-}
-
-// PUT /api/products/:id : Mettre à jour un produit
-export async function PUT(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
-  await dbConnect();
-  try {
-    const { id } = params;
-    const body = await req.json();
-
-    // Convert price fields to Decimal128 before saving (similar to POST)
-    if (body.priceData) {
-      if (body.priceData.price) {
-        body.priceData.price = new mongoose.Types.Decimal128(
-          String(body.priceData.price)
-        );
-      }
-      if (
-        body.priceData.discountedPrice !== undefined &&
-        body.priceData.discountedPrice !== null
-      ) {
-        body.priceData.discountedPrice = new mongoose.Types.Decimal128(
-          String(body.priceData.discountedPrice)
-        );
-      }
-      if (
-        body.priceData.pricePerUnit !== undefined &&
-        body.priceData.pricePerUnit !== null
-      ) {
-        body.priceData.pricePerUnit = new mongoose.Types.Decimal128(
-          String(body.priceData.pricePerUnit)
-        );
-      }
-    }
-
-    // Recalculate variants on update as well
-    if (body.productOptions && Array.isArray(body.productOptions)) {
-      const transformedOptions = transformProductOptionsForVariantGeneration(
-        body.productOptions
-      );
-      if (Object.keys(transformedOptions).length > 0) {
-        body.variants = generateVariants(
-          transformedOptions,
-          body.sku,
-          body.stock
-        );
-      } else {
-        body.variants = [];
-      }
-    } else {
-      body.variants = [];
-    }
-
-    const updatedProduct = await Product.findByIdAndUpdate(id, body, {
-      new: true,
-      runValidators: true,
-    });
-
-    if (!updatedProduct) {
-      return NextResponse.json(
-        { message: "Product not found." },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json(updatedProduct, { status: 200 });
-  } catch (error: any) {
-    console.error(`Error updating product ${params.id}:`, error);
     if (error.name === "ValidationError") {
       return NextResponse.json({ message: error.message }, { status: 400 });
     }

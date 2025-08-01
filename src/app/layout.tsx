@@ -9,6 +9,7 @@ import {
 } from "@clerk/nextjs";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "../components/tiptap.css"; // Assurez-vous d'ajouter cette ligne
 import { Toaster } from "sonner";
 
 const geistSans = Geist({

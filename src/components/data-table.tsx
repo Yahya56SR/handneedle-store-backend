@@ -1,15 +1,18 @@
-// src/components/data-table.tsx
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// src/components/data-table.tsx (Mettez à jour ce fichier)
 "use client";
 
 import * as React from "react";
 import {
   ColumnDef,
+  ColumnFiltersState, // Importez ColumnFiltersState
+  SortingState,
   flexRender,
   getCoreRowModel,
-  useReactTable,
-  getPaginationRowModel,
-  SortingState,
+  getFilteredRowModel, // Importez getFilteredRowModel
+  getPaginationRowModel, // Importez getPaginationRowModel
   getSortedRowModel,
+  useReactTable,
 } from "@tanstack/react-table";
 
 import {
@@ -19,30 +22,62 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"; // Ces composants de table viennent de Shadcn UI
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button"; // Pour les boutons de pagination
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
+  // --- NOUVELLE PROP : onDelete (pour les actions de suppression) ---
+  onDelete?: (id: string) => void;
+  // -----------------------------------------------------------------
 }
 
 export function DataTable<TData, TValue>({
   columns,
   data,
+  onDelete, // Destructure la nouvelle prop
 }: DataTableProps<TData, TValue>) {
-  const [sorting, setSorting] = React.useState<SortingState>([]); // Pour le tri des colonnes
+  const [sorting, setSorting] = React.useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>(
+    []
+  );
 
   const table = useReactTable({
     data,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(), // Active la pagination
-    onSortingChange: setSorting, // Gère le changement de tri
-    getSortedRowModel: getSortedRowModel(), // Active le tri
+    onSortingChange: setSorting,
+    getSortedRowModel: getSortedRowModel(),
+    onColumnFiltersChange: setColumnFilters, // Gérer les changements de filtre
+    getFilteredRowModel: getFilteredRowModel(), // Activer le filtrage
+    getPaginationRowModel: getPaginationRowModel(), // Activer la pagination
     state: {
       sorting,
+      columnFilters,
     },
   });
+
+  // --- Écouteur d'événements pour la suppression ---
+  React.useEffect(() => {
+    const handleDeleteRequest = (event: CustomEvent) => {
+      if (onDelete && event.detail) {
+        onDelete(event.detail); // Appelle la fonction onDelete passée par le parent
+      }
+    };
+
+    window.addEventListener(
+      "product-delete-request" as any,
+      handleDeleteRequest
+    );
+
+    return () => {
+      window.removeEventListener(
+        "product-delete-request" as any,
+        handleDeleteRequest
+      );
+    };
+  }, [onDelete]); // Déclenche le useEffect quand onDelete change
 
   return (
     <div className="rounded-md border">
@@ -88,6 +123,25 @@ export function DataTable<TData, TValue>({
           )}
         </TableBody>
       </Table>
+      {/* --- Pagination Controls --- */}
+      <div className="flex items-center justify-end space-x-2 py-4 pr-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => table.previousPage()}
+          disabled={!table.getCanPreviousPage()}
+        >
+          Précédent
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => table.nextPage()}
+          disabled={!table.getCanNextPage()}
+        >
+          Suivant
+        </Button>
+      </div>
     </div>
   );
 }

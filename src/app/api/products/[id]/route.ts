@@ -4,6 +4,10 @@ import { NextResponse } from "next/server";
 import dbConnect from "../../../../lib/dbConnect";
 import Product from "../../../../models/Product";
 import mongoose from "mongoose";
+import {
+  transformProductOptionsForVariantGeneration,
+  generateVariants,
+} from "../route";
 
 // Fonction utilitaire pour convertir Decimal128 en Number
 function decimal128ToNumber(
@@ -35,7 +39,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   await dbConnect();
-  const { id } = params;
+  const { id } = await params;
 
   try {
     const product = await Product.findById(id);
@@ -147,6 +151,93 @@ export async function GET(
     }
     return NextResponse.json(
       { message: "Error fetching product" },
+      { status: 500 }
+    );
+  }
+}
+
+// PUT /api/products/:id : Mettre à jour un produit
+export async function PUT(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  await dbConnect();
+  try {
+    const { id } = params;
+    const body = await req.json();
+
+    // Convert price fields to Decimal128 before saving (similar to POST)
+    if (body.priceData) {
+      if (body.priceData.price) {
+        body.priceData.price = new mongoose.Types.Decimal128(
+          String(body.priceData.price)
+        );
+      }
+      if (
+        body.priceData.discountedPrice !== undefined &&
+        body.priceData.discountedPrice !== null
+      ) {
+        body.priceData.discountedPrice = new mongoose.Types.Decimal128(
+          String(body.priceData.discountedPrice)
+        );
+      }
+      if (
+        body.priceData.pricePerUnit !== undefined &&
+        body.priceData.pricePerUnit !== null
+      ) {
+        body.priceData.pricePerUnit = new mongoose.Types.Decimal128(
+          String(body.priceData.pricePerUnit)
+        );
+      }
+    }
+
+    // Recalculate variants on update as well
+    if (body.productOptions && Array.isArray(body.productOptions)) {
+      const transformedOptions = transformProductOptionsForVariantGeneration(
+        body.productOptions
+      );
+      if (Object.keys(transformedOptions).length > 0) {
+        body.variants = generateVariants(
+          transformedOptions,
+          body.sku,
+          body.stock
+        );
+      } else {
+        body.variants = [];
+      }
+    } else {
+      body.variants = [];
+    }
+
+    const updatedProduct = await Product.findByIdAndUpdate(id, body, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (!updatedProduct) {
+      return NextResponse.json(
+        { message: "Product not found." },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(updatedProduct, { status: 200 });
+  } catch (error: any) {
+    console.error(`Error updating product ${params.id}:`, error);
+    if (error.name === "ValidationError") {
+      return NextResponse.json({ message: error.message }, { status: 400 });
+    }
+    if (error.code === 11000) {
+      return NextResponse.json(
+        {
+          message:
+            "Duplicate key error, product name or SKU might already exist.",
+        },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json(
+      { message: "An unexpected error occurred." },
       { status: 500 }
     );
   }

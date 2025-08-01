@@ -2,7 +2,7 @@
 // src/app/dashboard/products/new/page.tsx
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,98 +18,8 @@ import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { XCircle } from "lucide-react";
-
-import Quill from "quill";
-import "quill/dist/quill.snow.css";
 import Image from "next/image";
-
-// --- Custom QuillEditor Component ---
-interface QuillEditorProps {
-  value: string; // HTML content
-  onChange: (html: string) => void;
-  id: string; // Unique ID for the editor container
-}
-
-const QuillEditor: React.FC<QuillEditorProps> = ({ value, onChange, id }) => {
-  const editorRef = useRef<HTMLDivElement>(null);
-  const quillInstance = useRef<Quill | null>(null);
-  const [isFocused, setIsFocused] = useState(false); // State to track focus
-
-  useEffect(() => {
-    if (editorRef.current && !quillInstance.current) {
-      const toolbarOptions = [
-        [{ header: [1, 2, 3, 4, 5, 6, false] }],
-        ["bold", "italic", "underline", "strike"],
-        [{ list: "ordered" }, { list: "bullet" }],
-        [{ indent: "-1" }, { indent: "+1" }],
-        ["link", "image", "video"],
-        ["clean"],
-      ];
-
-      quillInstance.current = new Quill(editorRef.current, {
-        theme: "snow",
-        modules: {
-          toolbar: toolbarOptions,
-        },
-        placeholder: "Write your rich content here...",
-      });
-
-      // Initialize content
-      if (value) {
-        quillInstance.current.clipboard.dangerouslyPasteHTML(value);
-      }
-
-      // Listener for internal text changes
-      quillInstance.current.on("text-change", () => {
-        if (quillInstance.current) {
-          onChange(quillInstance.current.root.innerHTML);
-        }
-      });
-
-      // Listener for focus/selection changes
-      quillInstance.current.on("selection-change", (range) => {
-        if (range) {
-          // Editor gained focus or has a selection
-          setIsFocused(true);
-        } else {
-          // Editor lost focus
-          setIsFocused(false);
-        }
-      });
-    }
-
-    // Cleanup function
-    return () => {
-      if (quillInstance.current) {
-        quillInstance.current = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // This useEffect runs only once on mount
-
-  useEffect(() => {
-    // Update Quill editor only if the external value changes
-    // AND the editor is NOT currently focused by the user.
-    if (
-      quillInstance.current &&
-      !isFocused &&
-      value !== quillInstance.current.root.innerHTML
-    ) {
-      const currentSelection = quillInstance.current.getSelection();
-      quillInstance.current.clipboard.dangerouslyPasteHTML(value);
-      // Restore selection if possible after paste
-      if (currentSelection) {
-        quillInstance.current.setSelection(
-          currentSelection.index,
-          currentSelection.length
-        );
-      }
-    }
-  }, [value, isFocused]); // Depends on 'value' and 'isFocused'
-
-  return <div id={id} ref={editorRef} style={{ height: "200px" }} />;
-};
-// ------------------------------------------------------------------
+import TipTapEditorWrapper from "@/components/tiptap-editor";
 
 // --- Helper function to determine media type ---
 type MediaType = "image" | "video" | "other" | "invalid";
@@ -831,7 +741,7 @@ export default function NewProductPage() {
               <Label htmlFor={`block-body-${block.id}`} className="mb-2 block">
                 Block Body (Rich Text)
               </Label>
-              <QuillEditor
+              <TipTapEditorWrapper
                 id={`quill-editor-${block.id}`}
                 value={block.body}
                 onChange={(html) => handleBlockBodyChange(block.id, html)}

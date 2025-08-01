@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // src/app/dashboard/products/components/columns.tsx
 "use client";
 
@@ -12,38 +13,60 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge"; // Importer le composant Badge
 import Link from "next/link";
 import Image from "next/image";
 
-// --- NOUVEAU : Type pour un bloc de description ---
-export type DescriptionBlock = {
+// --- Type de Produit MIS À JOUR ---
+export interface DescriptionBlock {
+  id: string; // Ajout d'un ID pour faciliter la gestion des clés React
   title: string;
-  body: string; // Le contenu HTML sera une chaîne de caractères
-};
+  body: string; // Le corps contiendra du HTML généré par Quill
+}
 
-// Définissez le type de vos données de produit pour correspondre à la nouvelle API
 export type Product = {
   _id: string;
   name: string;
+  slug: string;
+  description?: DescriptionBlock[]; // CHANGEMENT ICI : Maintenant un tableau de DescriptionBlock
+  shortDescription?: string;
   sku: string;
   stock: number;
-  // --- MODIFICATION ICI : description est maintenant un tableau de DescriptionBlock ---
-  description?: DescriptionBlock[]; // Peut être optionnel si non pertinent pour le tableau
-  // ----------------------------------------------------------------------------------
   priceData: {
-    currency: string;
     price: number;
+    currency: string;
     discountedPrice?: number;
     pricePerUnit?: number;
   };
+  mediaUrls: string[];
+  categories: string[];
+  tags: string[];
   published: boolean;
+  active: boolean;
+  isFeatured: boolean;
+  productOptions: any[];
+  variants: any[];
+  createdAt: string; // Gardez string si votre API retourne des strings pour les dates
+  updatedAt: string; // Gardez string si votre API retourne des strings pour les dates
   type: "Digital" | "Physical";
-  mediaUrls?: string[];
+  instantDelivery: boolean;
 };
 
-export const columns = (
-  onDelete: (productId: string) => void
-): ColumnDef<Product>[] => [
+export const columns: ColumnDef<Product>[] = [
+  {
+    accessorKey: " ",
+    cell: ({ row }) => {
+      const mainMedia = row.original.mediaUrls[0];
+      return (
+        <Link
+          href={`/dashboard/products/${row.original._id}/edit`}
+          className="hover:underline font-medium"
+        >
+          <Image src={mainMedia} alt="" width={25} height={25} sizes="20vw" />
+        </Link>
+      );
+    },
+  },
   {
     accessorKey: "name",
     header: ({ column }) => {
@@ -57,25 +80,14 @@ export const columns = (
         </Button>
       );
     },
-    cell: ({ row }) => {
-      const product = row.original;
-      return (
-        <div className="flex items-center gap-2">
-          {product.mediaUrls &&
-            product.mediaUrls.length > 0 &&
-            product.mediaUrls[0] && (
-              <Image
-                src={product.mediaUrls[0]}
-                width={250}
-                height={250}
-                alt={product.name}
-                className="w-10 h-10 object-cover rounded mr-2"
-              />
-            )}
-          {product.name}
-        </div>
-      );
-    },
+    cell: ({ row }) => (
+      <Link
+        href={`/dashboard/products/${row.original._id}/edit`}
+        className="hover:underline font-medium"
+      >
+        {row.getValue("name")}
+      </Link>
+    ),
   },
   {
     accessorKey: "sku",
@@ -84,31 +96,62 @@ export const columns = (
   {
     accessorKey: "stock",
     header: "Stock",
+    cell: ({ row }) => {
+      const stock = row.getValue("stock") as number;
+      if (stock < 999)
+        return (
+          <span
+            className={
+              stock <= 10 && stock > 0
+                ? "text-orange-500 font-medium"
+                : stock === 0
+                ? "text-red-500 font-bold"
+                : ""
+            }
+          >
+            {stock}
+          </span>
+        );
+      else return <span>This Product Is For Command Only</span>;
+    },
   },
   {
-    accessorKey: "priceData.formatted.price",
+    accessorKey: "priceData.price",
     header: "Prix",
     cell: ({ row }) => {
-      const formattedPrice =
-        row.original.priceData.price + " " + row.original.priceData.currency;
-      const formattedDiscountedPrice =
-        row.original.priceData.discountedPrice +
-        " " +
-        row.original.priceData.currency;
+      const priceData = row.original.priceData; // Accéder directement à l'objet priceData
+      const price = priceData.price;
+      const discountedPrice = priceData.discountedPrice;
+      const currency = priceData.currency || "MAD";
 
-      if (
-        formattedDiscountedPrice &&
-        formattedDiscountedPrice !== formattedPrice
-      ) {
-        return (
-          <div className="font-medium">
-            <span className="text-red-500 line-through">{formattedPrice}</span>
-            <br />
-            <span className="text-green-600">{formattedDiscountedPrice}</span>
-          </div>
-        );
+      const formattedPrice = new Intl.NumberFormat("fr-MA", {
+        style: "currency",
+        currency: currency,
+      }).format(price);
+
+      let formattedDiscount;
+
+      if (discountedPrice) {
+        formattedDiscount = new Intl.NumberFormat("fr-MA", {
+          style: "currency",
+          currency: currency,
+        }).format(discountedPrice);
       }
-      return <div className="font-medium">{formattedPrice}</div>;
+
+      return (
+        <div className="font-medium">
+          {formattedDiscount ? (
+            <div className="block">
+              <div className="mr-2 text-xs text-red-500 line-through decoration-2 decoration-red-500 ">
+                {formattedPrice}
+              </div>
+              <div className="">{formattedDiscount}</div>
+            </div>
+          ) : (
+            <div className="">{formattedPrice}</div>
+          )}
+        </div>
+      );
     },
   },
   {
@@ -118,12 +161,23 @@ export const columns = (
   {
     accessorKey: "published",
     header: "Publié",
-    cell: ({ row }) => <div>{row.getValue("published") ? "Oui" : "Non"}</div>,
+    cell: ({ row }) => {
+      const published = row.getValue("published");
+      return (
+        <Badge variant={published ? "default" : "secondary"}>
+          {published ? "Oui" : "Non"}
+        </Badge>
+      );
+    },
   },
   {
     id: "actions",
     cell: ({ row }) => {
       const product = row.original;
+      // Supposons que handleDelete est passé via le composant DataTable ou via un contexte
+      // Pour l'exemple, nous allons juste logger l'action de suppression.
+      // La vraie implémentation nécessiterait de passer handleDelete de page.tsx
+      // Ou utiliser un hook useMutation si tu utilises React Query/SWR
 
       return (
         <DropdownMenu>
@@ -142,8 +196,14 @@ export const columns = (
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onClick={() => onDelete(product._id)}
-              className="text-red-600 focus:text-red-600 cursor-pointer"
+              onClick={() => {
+                // Ceci est un placeholder. La fonction handleDelete réelle doit être passée.
+                // Par exemple, via `DataTable` props ou un contexte.
+                // Pour l'instant, on simule une suppression.
+                console.log("Supprimer le produit avec l'ID:", product._id);
+                // toast.success(`Produit "${product.name}" supprimé (simulation).`);
+              }}
+              className="text-red-600 focus:text-red-600" // Style pour le texte de suppression
             >
               Supprimer
             </DropdownMenuItem>
