@@ -13,22 +13,22 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge"; // Importer le composant Badge
+import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import Image from "next/image";
 
-// --- Type de Produit MIS À JOUR ---
+// Type de Produit MIS À JOUR
 export interface DescriptionBlock {
-  id: string; // Ajout d'un ID pour faciliter la gestion des clés React
+  id: string;
   title: string;
-  body: string; // Le corps contiendra du HTML généré par Quill
+  body: string;
 }
 
 export type Product = {
   _id: string;
   name: string;
   slug: string;
-  description?: DescriptionBlock[]; // CHANGEMENT ICI : Maintenant un tableau de DescriptionBlock
+  description?: DescriptionBlock[];
   shortDescription?: string;
   sku: string;
   stock: number;
@@ -46,13 +46,16 @@ export type Product = {
   isFeatured: boolean;
   productOptions: any[];
   variants: any[];
-  createdAt: string; // Gardez string si votre API retourne des strings pour les dates
-  updatedAt: string; // Gardez string si votre API retourne des strings pour les dates
+  createdAt: string;
+  updatedAt: string;
   type: "Digital" | "Physical";
   instantDelivery: boolean;
 };
 
-export const columns: ColumnDef<Product>[] = [
+// MODIFICATION : `columns` est maintenant une fonction qui prend `onDelete`
+export const columns = (
+  onDelete: (id: string) => void
+): ColumnDef<Product>[] => [
   {
     accessorKey: " ",
     cell: ({ row }) => {
@@ -119,7 +122,7 @@ export const columns: ColumnDef<Product>[] = [
     accessorKey: "priceData.price",
     header: "Prix",
     cell: ({ row }) => {
-      const priceData = row.original.priceData; // Accéder directement à l'objet priceData
+      const priceData = row.original.priceData;
       const price = priceData.price;
       const discountedPrice = priceData.discountedPrice;
       const currency = priceData.currency || "MAD";
@@ -174,11 +177,6 @@ export const columns: ColumnDef<Product>[] = [
     id: "actions",
     cell: ({ row }) => {
       const product = row.original;
-      // Supposons que handleDelete est passé via le composant DataTable ou via un contexte
-      // Pour l'exemple, nous allons juste logger l'action de suppression.
-      // La vraie implémentation nécessiterait de passer handleDelete de page.tsx
-      // Ou utiliser un hook useMutation si tu utilises React Query/SWR
-
       return (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -195,15 +193,10 @@ export const columns: ColumnDef<Product>[] = [
               </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+            {/* Appel direct de la fonction onDelete */}
             <DropdownMenuItem
-              onClick={() => {
-                // Ceci est un placeholder. La fonction handleDelete réelle doit être passée.
-                // Par exemple, via `DataTable` props ou un contexte.
-                // Pour l'instant, on simule une suppression.
-                console.log("Supprimer le produit avec l'ID:", product._id);
-                // toast.success(`Produit "${product.name}" supprimé (simulation).`);
-              }}
-              className="text-red-600 focus:text-red-600" // Style pour le texte de suppression
+              onClick={() => onDelete(product._id)}
+              className="text-red-600 focus:text-red-600"
             >
               Supprimer
             </DropdownMenuItem>

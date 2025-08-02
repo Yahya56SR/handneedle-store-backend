@@ -47,14 +47,20 @@ export default function ProductsPage() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || "Échec de la suppression du produit.");
+        throw new Error(
+          errorData.message || "Échec de la suppression du produit."
+        );
       }
 
-      setProducts(prevProducts => prevProducts.filter(product => product._id !== id));
+      setProducts((prevProducts) =>
+        prevProducts.filter((product) => product._id !== id)
+      );
       toast.success("Produit supprimé avec succès !");
     } catch (error: any) {
       console.error("Erreur lors de la suppression du produit:", error);
-      toast.error(error.message || "Une erreur est survenue lors de la suppression.");
+      toast.error(
+        error.message || "Une erreur est survenue lors de la suppression."
+      );
     }
   };
 
@@ -64,15 +70,21 @@ export default function ProductsPage() {
       return products;
     }
     const lowercasedSearchTerm = searchTerm.toLowerCase();
-    return products.filter(product =>
-      product.name.toLowerCase().includes(lowercasedSearchTerm) ||
-      product.sku.toLowerCase().includes(lowercasedSearchTerm) ||
-      product.shortDescription?.toLowerCase().includes(lowercasedSearchTerm) ||
-      product.categories.some((cat: any) => cat.toLowerCase().includes(lowercasedSearchTerm)) ||
-      product.tags.some((tag: any) => tag.toLowerCase().includes(lowercasedSearchTerm))
+    return products.filter(
+      (product) =>
+        product.name.toLowerCase().includes(lowercasedSearchTerm) ||
+        product.sku.toLowerCase().includes(lowercasedSearchTerm) ||
+        product.shortDescription
+          ?.toLowerCase()
+          .includes(lowercasedSearchTerm) ||
+        product.categories.some((cat: any) =>
+          cat.toLowerCase().includes(lowercasedSearchTerm)
+        ) ||
+        product.tags.some((tag: any) =>
+          tag.toLowerCase().includes(lowercasedSearchTerm)
+        )
     );
   }, [products, searchTerm]);
-
 
   if (loading) {
     return (
@@ -100,7 +112,7 @@ export default function ProductsPage() {
           />
         </div>
         {/* Passer la fonction handleDelete au composant DataTable */}
-        <DataTable columns={columns} data={filteredProducts} onDelete={handleDelete} />
+        <DataTable columns={columns(handleDelete)} data={filteredProducts} />
       </CardContent>
     </Card>
   );

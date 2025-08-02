@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // src/app/api/categories/[id]/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import dbConnect from "../../../../lib/dbConnect";
 import Category from "../../../../models/Category";
 import mongoose from "mongoose"; // Pour vérifier si l'ID est valide
+import Product from "@/models/Product";
 
 // Définir l'interface pour les paramètres de la route
 interface CategoryRouteParams {
@@ -12,81 +13,76 @@ interface CategoryRouteParams {
   };
 }
 
-export async function GET(request: Request, { params }: CategoryRouteParams) {
+export async function GET(req: NextRequest, { params }: CategoryRouteParams) {
   await dbConnect();
   const { id } = params;
 
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return NextResponse.json(
-      { message: "Invalid Category ID" },
-      { status: 400 }
-    );
-  }
-
   try {
-    const category = await Category.findById(id);
+    const category = await Category.findById(id).populate({
+      path: "products",
+      model: Product,
+      select: "name slug sku mediaUrls", // Sélectionne les champs que vous voulez afficher
+    });
 
     if (!category) {
       return NextResponse.json(
-        { message: "Category not found" },
+        { message: "Catégorie non trouvée." },
         { status: 404 }
       );
     }
-
     return NextResponse.json(category, { status: 200 });
-  } catch (error) {
-    console.error(`Error fetching category with ID ${id}:`, error);
+  } catch (error: any) {
+    console.error("Erreur API GET /api/categories/[id]:", error);
     return NextResponse.json(
-      { message: "Error fetching category" },
+      { message: "Erreur serveur", error: error.message },
       { status: 500 }
     );
   }
 }
 
-export async function PUT(req: Request, { params }: CategoryRouteParams) {
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: { categoryId: string } }
+) {
   await dbConnect();
-  const { id } = params;
-
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return NextResponse.json(
-      { message: "Invalid Category ID" },
-      { status: 400 }
-    );
-  }
+  const { categoryId } = params;
 
   try {
     const body = await req.json();
-    console.log(`Updating category with ID ${id}. Received body:`, body);
+    const { name, image_url } = body; // NOUVEAU: Récupérer image_url
 
-    const updatedCategory = await Category.findByIdAndUpdate(id, body, {
-      new: true, // Retourne le document modifié
-      runValidators: true, // Exécute les validateurs de schéma
-    });
+    if (!name) {
+      return NextResponse.json(
+        { message: "Le nom de la catégorie est requis." },
+        { status: 400 }
+      );
+    }
+
+    // Mettre à jour la catégorie avec le nouveau champ
+    const updatedCategory = await Category.findByIdAndUpdate(
+      categoryId,
+      { name, slug: name, image_url }, // NOUVEAU: Inclure image_url
+      { new: true, runValidators: true }
+    );
 
     if (!updatedCategory) {
       return NextResponse.json(
-        { message: "Category not found" },
+        { message: "Catégorie non trouvée." },
         { status: 404 }
       );
     }
 
     return NextResponse.json(updatedCategory, { status: 200 });
   } catch (error: any) {
-    console.error(`Error updating category with ID ${id}:`, error);
-    if (error.name === "ValidationError") {
-      return NextResponse.json(
-        { message: error.message, errors: error.errors },
-        { status: 400 }
-      );
-    }
+    console.error("Erreur API PUT /api/categories/[id]:", error);
     if (error.code === 11000) {
       return NextResponse.json(
-        { message: "Duplicate key error: Category name must be unique." },
+        { message: "Une catégorie avec ce nom existe déjà." },
         { status: 409 }
       );
     }
     return NextResponse.json(
-      { message: "Error updating category" },
+      { message: "Erreur serveur", error: error.message },
       { status: 500 }
     );
   }
@@ -115,6 +111,8 @@ export async function DELETE(
         { status: 404 }
       );
     }
+
+    await Product.updateMany({ categories: id }, { $pull: { categories: id } });
 
     return NextResponse.json(
       { message: "Category deleted successfully" },
