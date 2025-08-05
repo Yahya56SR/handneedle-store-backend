@@ -1,214 +1,103 @@
-// src/app/api/cart/route.ts
-import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server"; // Ou directement '@clerk/nextjs' si tu utilises le middleware fonctionnel
-import dbConnect from "../../../lib/dbConnect";
-import User from "../../../models/User";
-import Product from "../../../models/Product";
-import mongoose from "mongoose";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { NextRequest, NextResponse } from "next/server";
+import { getAuth } from "@clerk/nextjs/server";
+import dbConnect from "@/lib/dbConnect";
+import CartModel from "@/models/Cart"; // Le modèle Cart que nous avons créé
+import Product from "@/models/Product"; // Le modèle Product
+import { CartItem } from "@/models/Cart"; // L'interface CartItem
 
-// Interface pour la structure d'un article dans le panier (pour la requête)
-interface CartItemData {
-  productId: string;
-  quantity: number;
-  options?: { [key: string]: string };
-}
-
-// Fonction utilitaire pour convertir Decimal128 en Number
-function decimal128ToNumber(
-  decimal: mongoose.Types.Decimal128 | undefined | null
-): number {
-  if (decimal === undefined || decimal === null) return 0;
-  // Vérifie si c'est un objet Decimal128 avant d'appeler .toString()
-  if (typeof decimal === "object" && "toString" in decimal) {
-    return parseFloat(decimal.toString());
-  }
-  // Si c'est déjà un nombre ou autre type compatible
-  return parseFloat(String(decimal));
-}
-
-// --- GET /api/cart : Récupérer le panier de l'utilisateur ---
-export async function GET() {
+export async function POST(req: NextRequest) {
   await dbConnect();
-  const { userId } = await auth();
-
-  if (!userId) {
-    return NextResponse.json(
-      { message: "Unauthorized: User not authenticated" },
-      { status: 401 }
-    );
-  }
 
   try {
-    const user = await User.findById(userId);
+    const { userId, sessionId } = getAuth(req);
 
-    if (!user) {
+    const userIdentifier = userId || sessionId;
+
+    if (!userIdentifier) {
       return NextResponse.json(
-        { message: "User not found in database" },
-        { status: 404 }
+        { success: false, error: "No active session found" },
+        { status: 401 }
       );
     }
 
-    let cartItemsObject = {};
+    const { sku, quantity } = await req.json();
 
-    // Vérifie si user.cartItems est une instance de Map (nouveaux documents)
-    if (user.cartItems instanceof Map) {
-      cartItemsObject = Object.fromEntries(user.cartItems);
-    }
-    // Si c'est un objet simple (anciens documents) et non null
-    else if (typeof user.cartItems === "object" && user.cartItems !== null) {
-      // Convertit l'objet simple en tableau d'entrées, puis en objet
-      cartItemsObject = Object.fromEntries(Object.entries(user.cartItems));
-    }
-    // Si user.cartItems est null ou undefined, il restera {} (initialisé au-dessus)
-    // Cela gère les cas où le champ n'existe pas ou est nul dans d'anciens documents.
-
-    return NextResponse.json(cartItemsObject, { status: 200 });
-  } catch (error) {
-    console.error("Error fetching user cart:", error);
-    return NextResponse.json(
-      { message: "Error fetching cart" },
-      { status: 500 }
-    );
-  }
-}
-
-// --- POST /api/cart : Ajouter/Mettre à jour un article dans le panier ---
-export async function POST(req: Request) {
-  await dbConnect();
-  const { userId } = await auth();
-
-  if (!userId) {
-    return NextResponse.json(
-      { message: "Unauthorized: User not authenticated" },
-      { status: 401 }
-    );
-  }
-
-  try {
-    const { productId, quantity, options }: CartItemData = await req.json();
-
-    if (!productId || typeof quantity !== "number" || quantity <= 0) {
+    if (!sku || quantity === undefined) {
       return NextResponse.json(
-        { message: "Invalid product ID or quantity" },
+        { success: false, error: "Missing SKU or quantity" },
         { status: 400 }
       );
     }
 
-    // Valider si le productId est un ObjectId valide (si tes Product IDs sont des ObjectIds Mongoose)
-    if (!mongoose.Types.ObjectId.isValid(productId)) {
-      return NextResponse.json(
-        { message: "Invalid Product ID format" },
-        { status: 400 }
-      );
-    }
+    // 1. Trouver le produit et le variant correspondant au SKU
+    const product = await Product.findOne({ "variants.sku": sku });
 
-    const user = await User.findById(userId);
-    if (!user) {
+    if (!product) {
       return NextResponse.json(
-        { message: "User not found in database" },
+        { success: false, error: `Product with SKU "${sku}" not found.` },
         { status: 404 }
       );
     }
 
-    const product = await Product.findById(productId);
-    if (!product || product.published === false) {
+    const variant = product.variants.find((v: any) => v.sku === sku);
+
+    if (!variant) {
       return NextResponse.json(
-        { message: "Product not found or not available" },
+        { success: false, error: `Variant with SKU "${sku}" not found.` },
         { status: 404 }
       );
     }
 
-    // Récupère le prix du produit et le convertit en nombre
-    const itemPrice = decimal128ToNumber(product.priceData?.price);
+    // 2. Trouver ou créer le panier pour l'utilisateur
+    let cart = await CartModel.findOne({ userIdentifier });
 
-    // Initialise cartItems comme une Map si ce n'est pas déjà le cas (pour les anciens documents)
-    if (!(user.cartItems instanceof Map)) {
-      user.cartItems = new Map(Object.entries(user.cartItems || {}));
+    if (!cart) {
+      cart = await CartModel.create({
+        userIdentifier: userIdentifier,
+        items: new Map<string, CartItem>(),
+        products: [],
+      });
     }
 
-    // Crée ou met à jour l'article dans la Map du panier
-    user.cartItems.set(productId, {
-      productId: productId,
-      name: product.name,
-      imageUrl: product.mediaUrls?.[0] || "",
-      price: itemPrice,
-      quantity: quantity,
-      options: options || {},
+    const itemsMap = cart.items;
+
+    // 3. Ajouter, mettre à jour ou supprimer l'article
+    if (quantity > 0) {
+      // Ajouter ou mettre à jour l'article
+      itemsMap.set(sku, {
+        productId: product._id,
+        name: product.name,
+        imageUrl: product.mediaUrls[0] || "",
+        price: product.priceData.discountedPrice || product.priceData.price,
+        quantity: quantity,
+        options: variant.options,
+      });
+    } else {
+      // Supprimer l'article si la quantité est 0
+      itemsMap.delete(sku);
+    }
+
+    // 4. Mettre à jour le montant total et la liste des IDs de produits
+    let newTotalAmount = 0;
+    const newProductIds = new Set<string>();
+
+    itemsMap.forEach((item: any) => {
+      newTotalAmount += item.price * item.quantity;
+      newProductIds.add(item.productId.toString());
     });
 
-    await user.save(); // Sauvegarde le document utilisateur avec le panier mis à jour
+    cart.totalAmount = newTotalAmount;
+    cart.items = itemsMap;
+    cart.products = Array.from(newProductIds); // Mise à jour du tableau de références
 
-    const updatedCartItemsObject = Object.fromEntries(user.cartItems);
-    return NextResponse.json(updatedCartItemsObject, { status: 200 });
+    await cart.save();
+
+    return NextResponse.json({ success: true, data: cart }, { status: 200 });
   } catch (error) {
-    console.error("Error adding/updating item in cart:", error);
-    // Gérer spécifiquement les erreurs de validation du schéma de CartItem
-    if (error instanceof mongoose.Error.ValidationError) {
-      return NextResponse.json(
-        { message: `Validation Error: ${error.message}` },
-        { status: 400 }
-      );
-    }
+    console.error("Error updating cart:", error);
     return NextResponse.json(
-      { message: "Error processing cart item" },
-      { status: 500 }
-    );
-  }
-}
-
-// --- DELETE /api/cart : Supprimer un article ou vider le panier ---
-export async function DELETE(req: Request) {
-  await dbConnect();
-  const { userId } = await auth();
-
-  if (!userId) {
-    return NextResponse.json(
-      { message: "Unauthorized: User not authenticated" },
-      { status: 401 }
-    );
-  }
-
-  try {
-    const { productId }: { productId?: string } = await req.json();
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return NextResponse.json(
-        { message: "User not found in database" },
-        { status: 404 }
-      );
-    }
-
-    // Initialise cartItems comme une Map si ce n'est pas déjà le cas (pour les anciens documents)
-    if (!(user.cartItems instanceof Map)) {
-      user.cartItems = new Map(Object.entries(user.cartItems || {}));
-    }
-
-    if (productId) {
-      // Supprimer un article spécifique
-      if (user.cartItems.has(productId)) {
-        // Utilise .has() pour vérifier l'existence
-        user.cartItems.delete(productId); // Utilise .delete() pour supprimer
-        console.log(`Product ${productId} removed from user ${userId}'s cart.`);
-      } else {
-        return NextResponse.json(
-          { message: "Product not found in cart" },
-          { status: 404 }
-        );
-      }
-    } else {
-      // Vider tout le panier
-      user.cartItems.clear(); // Utilise .clear() pour vider la Map
-      console.log(`Cart cleared for user ${userId}.`);
-    }
-
-    await user.save();
-    const updatedCartItemsObject = Object.fromEntries(user.cartItems);
-    return NextResponse.json(updatedCartItemsObject, { status: 200 });
-  } catch (error) {
-    console.error("Error deleting item/clearing cart:", error);
-    return NextResponse.json(
-      { message: "Error processing cart deletion" },
+      { success: false, error: (error as Error).message },
       { status: 500 }
     );
   }
