@@ -3,10 +3,21 @@
 import { NextResponse } from "next/server";
 import dbConnect from "../../../lib/dbConnect";
 import Product from "../../../models/Product";
+import Category from "../../../models/Category";
 import mongoose from "mongoose";
 
+// TypeScript interface for query parameters
+interface ProductQueryParams {
+  category?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+  featured?: boolean;
+  new?: boolean;
+}
+
 // --- Helper for transforming product options for variant generation ---
-export function transformProductOptionsForVariantGeneration(
+function transformProductOptionsForVariantGeneration(
   finalProductOptions: any[]
 ): { [key: string]: string[] } {
   const transformedOptions: { [key: string]: string[] } = {};
@@ -31,7 +42,7 @@ export function transformProductOptionsForVariantGeneration(
 }
 
 // --- generateVariants function (CORRIGÉE pour le champ 'options') ---
-export function generateVariants(
+function generateVariants(
   productOptions: { [key: string]: string[] }, // e.g., { "Color": ["Red", "Blue"], "Size": ["S", "M"] }
   baseSku: string,
   baseStock: number
@@ -112,11 +123,112 @@ function formatDecimal128ToString(
   }).format(value);
 }
 
-// GET /api/products : Récupérer tous les produits
-export async function GET() {
+/**
+ * GET /api/products : Récupérer tous les produits avec filtres et pagination
+ * 
+ * Query Parameters:
+ * - category?: string - Filter by category ID or slug
+ * - search?: string - Search in product name, description, and content
+ * - page?: number - Page number for pagination (default: 1, min: 1)
+ * - limit?: number - Number of items per page (default: 10, min: 1, max: 100)
+ * - featured?: boolean - Filter products in the "Featured Products" category
+ * - new?: boolean - Filter products in the "New Arrival" category
+ * 
+ * Response:
+ * {
+ *   products: Product[],
+ *   pagination: {
+ *     currentPage: number,
+ *     totalPages: number,
+ *     totalProducts: number,
+ *     limit: number,
+ *     hasNextPage: boolean,
+ *     hasPrevPage: boolean
+ *   }
+ * }
+ */
+export async function GET(request: Request) {
   await dbConnect();
   try {
-    const products = await Product.find({});
+    const { searchParams } = new URL(request.url);
+    
+    // Extract and validate query parameters
+    const category = searchParams.get('category');
+    const search = searchParams.get('search');
+    const featured = searchParams.get('featured') === 'true';
+    const newParam = searchParams.get('new') === 'true';
+    let page = parseInt(searchParams.get('page') || '1', 10);
+    let limit = parseInt(searchParams.get('limit') || '10', 10);
+    
+    // Validate and sanitize parameters
+    page = Math.max(1, page); // Ensure page is at least 1
+    limit = Math.min(Math.max(1, limit), 100); // Limit between 1 and 100
+    
+    // Build filter object
+    const filter: any = { published: true }; // Only show published products by default
+    
+    // Category filter - handle both ObjectId and slug
+    if (category) {
+      if (mongoose.Types.ObjectId.isValid(category)) {
+        filter.categories = category;
+      } else {
+        // If not a valid ObjectId, treat as category slug and find the category first
+        const categoryDoc = await Category.findOne({ slug: category });
+        if (categoryDoc) {
+          filter.categories = categoryDoc._id;
+        } else {
+          // If category not found, return empty results
+          filter.categories = new mongoose.Types.ObjectId(); // Non-existent ID
+        }
+      }
+    }
+    
+    // Search filter (searches in name, shortDescription, and description)
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { shortDescription: { $regex: search, $options: 'i' } },
+        { 'description.title': { $regex: search, $options: 'i' } },
+        { 'description.body': { $regex: search, $options: 'i' } }
+      ];
+    }
+    
+    // Featured products filter - find products in "Featured Products" category
+    if (featured) {
+      const featuredCategory = await Category.findOne({ name: "Featured Products" });
+      if (featuredCategory) {
+        filter.categories = featuredCategory._id;
+      } else {
+        // If Featured Products category doesn't exist, return empty results
+        filter.categories = new mongoose.Types.ObjectId();
+      }
+    }
+    
+    // New products filter - find products in "New Arrival" category
+    if (newParam) {
+      const newArrivalCategory = await Category.findOne({ name: "New Arrival" });
+      if (newArrivalCategory) {
+        filter.categories = newArrivalCategory._id;
+      } else {
+        // If New Arrival category doesn't exist, return empty results
+        filter.categories = new mongoose.Types.ObjectId();
+      }
+    }
+    
+    // Calculate pagination
+    const skip = (page - 1) * limit;
+    
+    // Get total count for pagination metadata
+    const totalProducts = await Product.countDocuments(filter);
+    
+    // Find products with filters and pagination
+    const products = await Product.find(filter)
+      .populate('categories', 'name slug')
+      .populate('tags', 'name slug')
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 }); // Sort by newest first
+    
     // Convert Decimal128 to Number for client-side consumption
     const productsFormatted = products.map((product) => {
       const p = product.toObject(); // Convert Mongoose document to plain object
@@ -133,7 +245,25 @@ export async function GET() {
       }
       return p;
     });
-    return NextResponse.json(productsFormatted, { status: 200 });
+    
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalProducts / limit);
+    const hasNextPage = page < totalPages;
+    const hasPrevPage = page > 1;
+    
+    const response = {
+      products: productsFormatted,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalProducts,
+        limit,
+        hasNextPage,
+        hasPrevPage
+      }
+    };
+    
+    return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error("Error fetching products:", error);
     return NextResponse.json(
@@ -230,36 +360,6 @@ export async function POST(req: Request) {
     }
     return NextResponse.json(
       { message: "An unexpected error occurred." },
-      { status: 500 }
-    );
-  }
-}
-
-// DELETE /api/products/:id : Supprimer un produit
-export async function DELETE(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
-  await dbConnect();
-  try {
-    const { id } = params;
-    const deletedProduct = await Product.findByIdAndDelete(id);
-
-    if (!deletedProduct) {
-      return NextResponse.json(
-        { message: "Product not found." },
-        { status: 404 }
-      );
-    }
-
-    return NextResponse.json(
-      { message: "Product deleted successfully." },
-      { status: 200 }
-    );
-  } catch (error: any) {
-    console.error(`Error deleting product ${params.id}:`, error);
-    return NextResponse.json(
-      { message: "An error occurred while deleting the product." },
       { status: 500 }
     );
   }
